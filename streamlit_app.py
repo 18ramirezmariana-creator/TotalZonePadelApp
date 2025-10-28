@@ -42,6 +42,10 @@ def load_page(page_name):
             background-color: #f7f7fb !important;
             line-height: 52px !important;
         }
+                    
+        .stNumberInput button {
+        color: white !important;           /* color de los signos + y - */
+        }
 
         /* === SELECTBOX IGUALADOS === */
         div[data-baseweb="select"] > div {
