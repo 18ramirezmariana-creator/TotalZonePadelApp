@@ -1,28 +1,13 @@
 import streamlit as st
 import pandas as pd
 
+
 def app():
-
-    # VALIDACIÓN 1: La clave debe existir
-    if "ranking" not in st.session_state:
-        st.warning("Todavía no hay un ranking generado. Regresa al torneo para finalizar los partidos.")
-        if st.button("Volver al Torneo"):
-            st.session_state.page = "torneo"
-            st.rerun()
-        return
-
-    # Recuperar
-    ranking_data = st.session_state.get("ranking", None)
-
-    # VALIDACIÓN 2: Debe ser DataFrame válido
-    if ranking_data is None or not isinstance(ranking_data, pd.DataFrame) or ranking_data.empty:
-        st.warning("El ranking está vacío o tiene un formato inválido.")
-        if st.button("Volver al Torneo"):
-            st.session_state.page = "torneo"
-            st.rerun()
-        return
-
-    df = ranking_data.copy()
+    
+    rank = st.session_state.ranking
+    # Convert to DataFrame
+    df = rank.copy()
+    # Display header
 
     # --- Estilos Podio ---
     col2, col1, col3 = st.columns([1, 1, 1])
@@ -53,12 +38,12 @@ def app():
             </div>
         """, unsafe_allow_html=True)
 
-    # Gradientes
+    # Efecto metálico para cada puesto
     gold_gradient = "linear-gradient(145deg, #FFD700, #E6C200, #FFF6A0)"
     silver_gradient = "linear-gradient(145deg, #C0C0C0, #A9A9A9, #E0E0E0)"
     bronze_gradient = "linear-gradient(145deg, #FFA347, #FF7A00, #FFD08A)"
 
-    # Top 3
+    # Obtener top 3
     top3 = df.head(3)
 
     with col1:
@@ -68,7 +53,7 @@ def app():
     with col3:
         podium_card("🥉 3er Puesto", top3.iloc[2]["Jugador"], top3.iloc[2]["Puntos"], bronze_gradient, 230)
 
-    # Otros participantes
+   # --- Otros participantes ---
     others = df.iloc[3:]
     if not others.empty:
         st.markdown("""
@@ -95,8 +80,6 @@ def app():
             """, unsafe_allow_html=True)
 
         st.markdown("</div></div>", unsafe_allow_html=True)
-
-    # Botones
     col2, col1, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         if st.button("Volver"):

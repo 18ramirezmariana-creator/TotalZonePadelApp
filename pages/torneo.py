@@ -245,7 +245,7 @@ def app():
             elif mod_parejas == "Todos Contra Todos":
                 ranking = calcular_ranking_individual(st.session_state.resultados)
             st.session_state.ranking = ranking
-            st.session_state.page = "ranking"
+            st.session_state.page = "z_ranking"
             st.rerun()
    
 #TODO seguimiento ranking 
