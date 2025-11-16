@@ -4,11 +4,14 @@ from assets.helper_funcs import initialize_vars
 
 
 def app():
-    if "ranking" not in st.session_state:
-        st.session_state.ranking = {}
-    rank = st.session_state.ranking
-    # Convert to DataFrame
-    df = rank.copy()
+    if "ranking" not in st.session_state or not isinstance(st.session_state.ranking, pd.DataFrame) or st.session_state.ranking.empty:
+        st.warning("Todavía no hay un ranking generado. Regresa al torneo para finalizar los partidos.")
+        if st.button("Volver al Torneo"):
+            st.session_state.page = "torneo"
+            st.rerun()
+        return
+
+    df = st.session_state.ranking.copy()
     # Display header
 
     # --- Estilos Podio ---
