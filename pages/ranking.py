@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
+from assets.helper_funcs import initialize_vars
 
 
 def app():
-    
+    to_init = {"ranking":{}}
+    initialize_vars(to_init)
     rank = st.session_state.ranking
     # Convert to DataFrame
     df = rank.copy()
