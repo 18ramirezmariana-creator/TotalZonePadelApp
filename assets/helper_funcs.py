@@ -44,27 +44,50 @@ def calcular_ranking_parejas(parejas:List[str], resultados:Dict[Tuple[str,str], 
                            columns=["Jugador", "Puntos"])
     return ranking
 
-def calcular_ranking_individual(resultados: Dict[Tuple[str, str], Tuple[int, int]]) -> pd.DataFrame:
+def calcular_ranking_individual(resultados: Dict[Tuple[str, str], Tuple[int, int]], 
+                                fixture: List[Dict] = None) -> pd.DataFrame:
     """
     Calcula el ranking individual acumulado según los resultados ingresados.
     Cada jugador recibe los puntos que su pareja obtuvo en cada partido.
+    Los ayudantes NO suman puntos (verificado con valido_para).
     """
     puntajes = {}
+    
+    # Construir mapa de válidos si tenemos fixture
+    validos_map = {}
+    if fixture:
+        for ronda_data in fixture:
+            for partido in ronda_data["partidos"]:
+                pareja1_str = " & ".join(partido["pareja1"])
+                pareja2_str = " & ".join(partido["pareja2"])
+                validos_map[(pareja1_str, pareja2_str)] = partido.get("valido_para", 
+                                                                       partido["pareja1"] + partido["pareja2"])
 
     for (p1, p2), (r1, r2) in resultados.items():
-        # separar los nombres de cada jugador en la pareja
+        # Separar los nombres de cada jugador en la pareja
         jugadores_p1 = p1.split(" & ")
         jugadores_p2 = p2.split(" & ")
-
-        # sumar puntos a cada jugador
+        
+        # Obtener lista de jugadores válidos para este partido
+        validos = validos_map.get((p1, p2), jugadores_p1 + jugadores_p2)
+        
+        # Sumar puntos SOLO a jugadores válidos (no ayudantes)
         for j in jugadores_p1:
-            puntajes[j] = puntajes.get(j, 0) + r1
+            if j in validos:
+                puntajes[j] = puntajes.get(j, 0) + r1
         for j in jugadores_p2:
-            puntajes[j] = puntajes.get(j, 0) + r2
+            if j in validos:
+                puntajes[j] = puntajes.get(j, 0) + r2
 
-    # ordenar ranking
+    # Ordenar ranking
     ranking = pd.DataFrame(
         sorted(puntajes.items(), key=lambda x: x[1], reverse=True),
         columns=["Jugador", "Puntos"]
     )
     return ranking
+
+def render_nombre(jugador, ayudantes):
+    if jugador in ayudantes:
+        return f"{jugador} 🛟"     # Salvavidas
+    return jugador
+

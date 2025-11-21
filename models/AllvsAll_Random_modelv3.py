@@ -1,251 +1,454 @@
 import random
-import itertools
+from itertools import combinations
 from collections import defaultdict
-from typing import List, Dict, Any
 import pandas as pd
+from typing import List, Dict, Any, Tuple, Set
 
-def generar_torneo_todos_contra_todos(
-    jugadores: List[str],
-    num_canchas: int,
-    seed: int | None = None
-) -> List[Dict[str, Any]]:
-    """
-    Versión modificada:
-    - máximo RONDAS = 9
-    - objetivo cobertura >= 80% (opcional)
-    - prioriza nuevos enfrentamientos y nuevas parejas
-    - evita descansos consecutivos siempre que sea posible
-    - mantiene la lógica de 'ayudantes' y 'valido_para' (partidos con ayudantes no cuentan para ranking)
-    """
-    if seed is not None:
-        random.seed(seed)
-
-    n = len(jugadores)
-    if n < 4:
-        raise ValueError("Se requieren al menos 4 jugadores para dobles 2vs2.")
-
-    TODOS_PARES = set(tuple(sorted(p)) for p in itertools.combinations(jugadores, 2))
-    TARGET_COVERAGE = 0.80  # objetivo mínimo de cobertura
-    MAX_ROUNDS = 9
-
-    # contadores
-    partidos_jugados = defaultdict(int)   # cuenta solo partidos 'validos' (no ayudantes)
-    descansos = defaultdict(int)
-    enfrentamientos_cubiertos = set()
-    parejas_contadas = defaultdict(int)   # cuenta cuantas veces se formó cada pareja (for penalización)
-    rondas = []
-
-    last_rest = None  # para evitar descansos consecutivos
-
-    # pesos de scoring (ajustables)
-    W_NEW_AD = 100.0     # nuevo enfrentamiento (prioridad alta)
-    W_NEW_PART = 25.0    # nueva pareja (segunda prioridad)
-    PEN_REPEAT_PART = 8.0   # penaliza repetir pareja
-    PEN_REST_CONSEC = 1e4   # penaliza que los descansos intersecten el last_rest (evitarlo)
-    TRIALS_PER_CANCHA = 80  # número de muestreos aleatorios para elegir quad (puedes bajar para velocidad)
-
-    # precomputes helpers
-    all_pairs = TODOS_PARES.copy()
-
-    round_idx = 0
-    # Generar hasta MAX_ROUNDS o hasta que se alcance cobertura objetivo razonable
-    while round_idx < MAX_ROUNDS:
-        round_idx += 1
-        # ordenar jugadores por partidos válidos ascendentes y descansos ascendentes
-        jugadores_ordenados = sorted(jugadores, key=lambda g: (partidos_jugados[g], descansos[g]))
-        disponibles = set(jugadores_ordenados)
-
-        # calcular cuántos deben descansar esta ronda (2 si n=10 y 2 canchas)
-        # general: resto = n - 4*num_canchas  (si >0 descansan ese número)
-        sobrantes = max(0, n - 4 * num_canchas)
-        descansan = []
-        if sobrantes > 0:
-            # elegir los que menos descansos han tenido, evitando last_rest si es posible
-            min_desc = min(descansos.values()) if descansos else 0
-            candidatos = [j for j in jugadores_ordenados if descansos[j] == min_desc]
-            # intentar escoger candidatos que no estén en last_rest
-            if last_rest is not None:
-                candidatos_no_last = [c for c in candidatos if c not in (last_rest or [])]
-                if len(candidatos_no_last) >= sobrantes:
-                    candidatos = candidatos_no_last
-            random.shuffle(candidatos)
-            descansan = candidatos[:sobrantes]
-            for j in descansan:
-                descansos[j] += 1
-            disponibles -= set(descansan)
+class AmericanoTournament:
+    def __init__(self, players: List[str], num_fields: int):
+        """
+        Initialize Americano Padel Tournament
+        
+        Args:
+            players: List of player names
+            num_fields: Number of available padel fields
+        """
+        self.players = players
+        self.num_players = len(players)
+        self.num_fields = num_fields
+        
+        # Statistics tracking
+        self.partner_count = defaultdict(lambda: defaultdict(int))
+        self.opponent_count = defaultdict(lambda: defaultdict(int))
+        self.games_played = defaultdict(int)  # Valid games only
+        self.helper_games = defaultdict(int)  # Helper games (don't count)
+        self.consecutive_rests = defaultdict(int)
+        self.last_round_played = defaultdict(lambda: -1)
+        
+    def calculate_optimal_rounds(self) -> int:
+        """Calculate optimal number of rounds based on Priority 1"""
+        if self.num_fields == 2:
+            # Priority 1: j-1 rounds for 2 fields
+            return self.num_players - 1
         else:
-            # si sobrantes == 0, nadie descansa esta ronda
-            descansan = []
-
-        partidos_ronda = []
-        used_players_this_round = set()
-
-        # para cada cancha, buscamos la mejor quad disjunta según heurística
-        for cancha_idx in range(num_canchas):
-            # recompute disponibles para este punto
-            cur_avail = list(disponibles - used_players_this_round)
-            # si hay menos de 4 jugadores disponibles, intentamos traer ayudantes según la lógica original
-            if len(cur_avail) < 4:
-                # aplicamos la regla original: solo usar ayudantes si todos tienen igual número de partidos válidos
-                counts = [partidos_jugados[g] for g in jugadores]
-                todos_igual = (min(counts) == max(counts))
-                if not todos_igual:
-                    # no podemos formar más partidos válidos cómodamente en esta ronda
-                    break
-                else:
-                    needed = 4 - len(cur_avail)
-                    no_disp = [g for g in jugadores if g not in (disponibles - set(descansan)) and g not in cur_avail]
-                    # seleccionar ayudantes con mayor partidos_jugados (siguiendo tu lógica original)
-                    no_disp_sorted = sorted(no_disp, key=lambda g: -partidos_jugados[g])
-                    ayudantes_seleccionados = no_disp_sorted[:needed]
-                    take4 = cur_avail + ayudantes_seleccionados
-                    if len(take4) < 4:
+            # For more fields: calculate to achieve all vs all
+            players_per_round = self.num_fields * 4
+            return max(self.num_players - 1, 
+                      (self.num_players * (self.num_players - 1)) // (players_per_round * 2))
+    
+    def calculate_target_games(self) -> int:
+        """
+        Calculate target valid games per player based on Priority 2
+        This should be the MINIMUM games everyone can achieve
+        """
+        total_rounds = self.calculate_optimal_rounds()
+        total_slots = total_rounds * self.num_fields * 4
+        # Calculate floor division to ensure everyone can reach this
+        base_target = total_slots // self.num_players
+        
+        # Verify: can everyone play this many games?
+        # We need base_target * num_players <= total_slots
+        return base_target
+    
+    def get_uncovered_opponents(self, player: str) -> Set[str]:
+        """Get list of players this player hasn't faced yet"""
+        all_opponents = set(self.players) - {player}
+        faced = set(p for p in all_opponents if self.opponent_count[player][p] > 0)
+        return all_opponents - faced
+    
+    def get_uncovered_partners(self, player: str) -> Set[str]:
+        """Get list of players this player hasn't partnered with yet"""
+        all_partners = set(self.players) - {player}
+        partnered = set(p for p in all_partners if self.partner_count[player][p] > 0)
+        return all_partners - partnered
+    
+    def count_new_matchups(self, match: Tuple[str, str, str, str]) -> int:
+        """Count how many NEW opponent matchups this match creates"""
+        p1, p2, p3, p4 = match
+        new_matchups = 0
+        
+        # Check all opponent pairs
+        for t1_player in [p1, p2]:
+            for t2_player in [p3, p4]:
+                if self.opponent_count[t1_player][t2_player] == 0:
+                    new_matchups += 1
+        
+        return new_matchups
+    
+    def count_new_partnerships(self, match: Tuple[str, str, str, str]) -> int:
+        """Count how many NEW partnerships this match creates"""
+        p1, p2, p3, p4 = match
+        new_partnerships = 0
+        
+        if self.partner_count[p1][p2] == 0:
+            new_partnerships += 1
+        if self.partner_count[p3][p4] == 0:
+            new_partnerships += 1
+        
+        return new_partnerships
+    
+    def get_match_score(self, match: Tuple[str, str, str, str], round_num: int, is_helper_match: bool = False) -> float:
+        """
+        Score a potential match based on priorities
+        Lower score is better
+        """
+        p1, p2, p3, p4 = match
+        score = 0.0
+        
+        # If this is a helper match, deprioritize it heavily
+        if is_helper_match:
+            score += 10000
+        
+        # NEW: Count new matchups (highest priority after helpers)
+        new_matchups = self.count_new_matchups(match)
+        new_partnerships = self.count_new_partnerships(match)
+        
+        # Heavily reward new opponent matchups (Priority 4 enhancement)
+        score -= new_matchups * 2500  # Each new opponent matchup is highly valuable
+        
+        # Reward new partnerships strongly
+        score -= new_partnerships * 3000  # New partnerships are critical
+        
+        # Penalize repeated partnerships heavily
+        partner_reps = self.partner_count[p1][p2] + self.partner_count[p3][p4]
+        if partner_reps > 0:
+            score += partner_reps * 5000  # Much higher penalty for repeating
+        
+        # Penalize repeated opponent matchups moderately
+        opponents = [(p1, p3), (p1, p4), (p2, p3), (p2, p4)]
+        total_opponent_reps = sum(self.opponent_count[opp1][opp2] for opp1, opp2 in opponents)
+        if total_opponent_reps > 0:
+            score += total_opponent_reps * 800
+        
+        # Priority 3: Avoid consecutive rests
+        for p in match:
+            if self.last_round_played[p] == round_num - 1:
+                score += 300
+            elif self.last_round_played[p] < round_num - 1:
+                score -= 200
+        
+        # Priority 2: Balance games played
+        games_sum = sum(self.games_played[p] for p in match)
+        score += games_sum * 400
+        
+        # Minimize variance in games played within this match
+        games_list = [self.games_played[p] for p in match]
+        variance = max(games_list) - min(games_list)
+        score += variance * 300
+        
+        return score
+    
+    def select_helpers(self, needed: int, available_players: Set[str], round_num: int) -> List[str]:
+        """
+        Select helper players to complete a match
+        Helpers are players who already have enough valid games
+        """
+        target_games = self.calculate_target_games()
+        
+        # Candidates: players NOT in available (they're resting or already playing)
+        # AND players who already have target games or more
+        candidates = []
+        
+        for p in self.players:
+            if p not in available_players and self.games_played[p] >= target_games:
+                candidates.append(p)
+        
+        # If not enough candidates with target games, allow anyone not available
+        if len(candidates) < needed:
+            candidates = [p for p in self.players if p not in available_players]
+        
+        # Sort by: most valid games (they can afford to help), least helper games (fair distribution)
+        candidates.sort(key=lambda p: (-self.games_played[p], self.helper_games[p]))
+        
+        return candidates[:needed]
+    
+    def generate_round_matches(self, round_num: int, available_players: List[str]) -> Tuple[List[Dict], List[str]]:
+        """Generate matches for a round, using helpers if needed"""
+        matches = []
+        remaining = set(available_players)
+        target_games = self.calculate_target_games()
+        
+        for field_idx in range(self.num_fields):
+            if len(remaining) == 0:
+                break
+            
+            players_needing_games = [p for p in remaining if self.games_played[p] < target_games]
+            
+            helpers_needed = []
+            is_helper_match = False
+            
+            if len(players_needing_games) >= 4:
+                # ENHANCED: Greedy + sampling approach for better coverage
+                best_match = None
+                best_score = float('inf')
+                
+                candidates = players_needing_games
+                
+                # Strategy 1: Prioritize players with most uncovered opponents
+                players_by_coverage = sorted(
+                    candidates, 
+                    key=lambda p: (
+                        -len(self.get_uncovered_opponents(p)),
+                        -len(self.get_uncovered_partners(p)),
+                        self.games_played[p]
+                    )
+                )
+                
+                # Try focused combinations first (players who need coverage)
+                focused_tries = 0
+                max_focused = min(100, len(list(combinations(players_by_coverage[:8], 4))))
+                
+                for combo in combinations(players_by_coverage[:8], 4):
+                    if focused_tries >= max_focused:
                         break
-                    p1 = (take4[0], take4[1])
-                    p2 = (take4[2], take4[3])
-                    valido_dict = {pl: (pl not in ayudantes_seleccionados) for pl in p1 + p2}
-                    partidos_ronda.append({
-                        "cancha": cancha_idx + 1,
-                        "pareja1": tuple(p1),
-                        "pareja2": tuple(p2),
-                        "ayudantes": list(ayudantes_seleccionados),
-                        "valido_para": valido_dict
+                    focused_tries += 1
+                    
+                    p1, p2, p3, p4 = combo
+                    configurations = [
+                        (p1, p2, p3, p4),
+                        (p1, p3, p2, p4),
+                        (p1, p4, p2, p3),
+                    ]
+                    
+                    for config in configurations:
+                        score = self.get_match_score(config, round_num, False)
+                        if score < best_score:
+                            best_score = score
+                            best_match = config
+                
+                # Strategy 2: Random sampling for diversity
+                if len(candidates) > 8:
+                    for _ in range(100):
+                        combo = tuple(random.sample(candidates, 4))
+                        p1, p2, p3, p4 = combo
+                        
+                        configurations = [
+                            (p1, p2, p3, p4),
+                            (p1, p3, p2, p4),
+                            (p1, p4, p2, p3),
+                        ]
+                        
+                        for config in configurations:
+                            score = self.get_match_score(config, round_num, False)
+                            if score < best_score:
+                                best_score = score
+                                best_match = config
+                
+                if best_match:
+                    matches.append({
+                        "players": best_match,
+                        "helpers": [],
+                        "field": field_idx
                     })
-                    used_players_this_round |= set(take4)
-                    continue
-
-            # buscar la mejor quad entre muestreos aleatorios
-            best_quad = None
-            best_score = -float("inf")
-            # si hay muchos candidatos, limitamos el set para muestreo por eficiencia
-            pool = cur_avail.copy()
-            # aumentamos aleatoriedad en pool si es grande
-            for _ in range(min(TRIALS_PER_CANCHA, max(20, len(pool) * 3))):
-                if len(pool) < 4:
-                    break
-                quad = random.sample(pool, 4)
-                # probar las 3 particiones
-                partitions = [
-                    ((quad[0], quad[1]), (quad[2], quad[3])),
-                    ((quad[0], quad[2]), (quad[1], quad[3])),
-                    ((quad[0], quad[3]), (quad[1], quad[2])),
+                    remaining -= set(best_match)
+                    
+            elif len(players_needing_games) > 0:
+                # Match with helpers
+                regular_players = players_needing_games
+                need_helpers = 4 - len(regular_players)
+                is_helper_match = True
+                
+                available_helpers_from_remaining = [
+                    p for p in remaining 
+                    if p not in regular_players and self.games_played[p] >= target_games
                 ]
-                for p1, p2 in partitions:
-                    # penalizar si alguno de estos jugadores ya será usado en otro partido de esta ronda
-                    if set(p1) & used_players_this_round or set(p2) & used_players_this_round:
-                        continue
-                    # calcular cuántos nuevos adversarios aporta
-                    new_ad = 0
-                    new_part = 0
-                    repeat_part_pen = 0
-                    for a in p1:
-                        for b in p2:
-                            pair = tuple(sorted((a, b)))
-                            if pair not in enfrentamientos_cubiertos:
-                                new_ad += 1
-                    for p in (p1, p2):
-                        partnership = tuple(sorted(p))
-                        if parejas_contadas[partnership] == 0:
-                            new_part += 1
-                        repeat_part_pen += parejas_contadas[partnership]
-                    # penalizar si descansos de esta ronda chocan con last_rest
-                    rest_consec_pen = 0
-                    if last_rest is not None and len(set(descansan) & set(last_rest)) > 0:
-                        # esta penalización es por escoger descansos que repitan; pero aquí preferimos
-                        rest_consec_pen = PEN_REST_CONSEC if any(x in last_rest for x in descansan) else 0
-                    # score combine
-                    score = (W_NEW_AD * new_ad) + (W_NEW_PART * new_part) - (PEN_REPEAT_PART * repeat_part_pen) - rest_consec_pen
-                    # tie-breaker: favorecer quads with lower max(partidos_jugados) to balance carga
-                    worst_count = max(partidos_jugados[a] for a in p1 + p2)
-                    score -= 0.2 * worst_count
-                    if score > best_score:
-                        best_score = score
-                        best_quad = (tuple(p1), tuple(p2))
-
-            # fallback si no se encontró quad por muestreo (poco probable)
-            if best_quad is None:
-                take = cur_avail[:4]
-                p1 = (take[0], take[1])
-                p2 = (take[2], take[3])
-                ayudantes = []
-                valido_dict = {pl: True for pl in p1 + p2}
-                partidos_ronda.append({
-                    "cancha": cancha_idx + 1,
-                    "pareja1": p1,
-                    "pareja2": p2,
-                    "ayudantes": ayudantes,
-                    "valido_para": valido_dict
-                })
-                used_players_this_round |= set(p1) | set(p2)
+                
+                if len(available_helpers_from_remaining) >= need_helpers:
+                    helpers_needed = available_helpers_from_remaining[:need_helpers]
+                else:
+                    helpers_needed = available_helpers_from_remaining + self.select_helpers(
+                        need_helpers - len(available_helpers_from_remaining), 
+                        remaining, 
+                        round_num
+                    )
+                
+                if len(helpers_needed) < need_helpers:
+                    break
+                
+                all_players = regular_players + helpers_needed
+                
+                # Even with helpers, optimize for coverage
+                best_config = None
+                best_score = float('inf')
+                
+                import itertools
+                for perm in itertools.permutations(all_players, 4):
+                    p1, p2, p3, p4 = perm
+                    configurations = [
+                        (p1, p2, p3, p4),
+                        (p1, p3, p2, p4),
+                        (p1, p4, p2, p3),
+                    ]
+                    
+                    for config in configurations:
+                        score = self.get_match_score(config, round_num, True)
+                        if score < best_score:
+                            best_score = score
+                            best_config = config
+                
+                if best_config:
+                    matches.append({
+                        "players": best_config,
+                        "helpers": helpers_needed,
+                        "field": field_idx
+                    })
+                    for p in best_config:
+                        if p in remaining:
+                            remaining.discard(p)
             else:
-                p1, p2 = best_quad
-                valido_dict = {pl: True for pl in p1 + p2}
-                partidos_ronda.append({
-                    "cancha": cancha_idx + 1,
-                    "pareja1": tuple(p1),
-                    "pareja2": tuple(p2),
-                    "ayudantes": [],
-                    "valido_para": valido_dict
-                })
-                used_players_this_round |= set(p1) | set(p2)
+                break
+        
+        resting = list(remaining)
+        return matches, resting
+    
+    def update_statistics(self, match: Dict, round_num: int):
+        """Update tracking statistics after a match"""
+        p1, p2, p3, p4 = match["players"]
+        helpers = match["helpers"]
+        
+        # Update partners
+        self.partner_count[p1][p2] += 1
+        self.partner_count[p2][p1] += 1
+        self.partner_count[p3][p4] += 1
+        self.partner_count[p4][p3] += 1
+        
+        # Update opponents
+        for t1_player in [p1, p2]:
+            for t2_player in [p3, p4]:
+                self.opponent_count[t1_player][t2_player] += 1
+                self.opponent_count[t2_player][t1_player] += 1
+        
+        # Update games played
+        for p in [p1, p2, p3, p4]:
+            if p in helpers:
+                self.helper_games[p] += 1
+            else:
+                self.games_played[p] += 1
+            self.last_round_played[p] = round_num
+    
+    def generate_tournament(self) -> Tuple[List[List[Dict]], Dict]:
+        """Generate complete tournament schedule"""
+        num_rounds = self.calculate_optimal_rounds()
+        tournament_schedule = []
+        
+        for round_num in range(num_rounds):
+            # All players available, prioritize those with fewer games and rested
+            available = sorted(self.players, 
+                             key=lambda p: (self.games_played[p], 
+                                          -self.consecutive_rests[p],
+                                          round_num - self.last_round_played[p]))
+            
+            matches, resting = self.generate_round_matches(round_num, available)
+            
+            if not matches:
+                break
+                
+            tournament_schedule.append(matches)
+            
+            for match in matches:
+                self.update_statistics(match, round_num)
+            
+            # Update consecutive rests
+            for p in resting:
+                self.consecutive_rests[p] += 1
+            for match in matches:
+                for p in match["players"]:
+                    self.consecutive_rests[p] = 0
+        
+        stats = {
+            "games_played": dict(self.games_played),
+            "helper_games": dict(self.helper_games),
+            "target_games": self.calculate_target_games()
+        }
+        
+        return tournament_schedule, stats
+    
+    def format_for_streamlit(self, tournament_schedule: List[List[Dict]], 
+                            stats: Dict) -> Dict[str, Any]:
+        """
+        Format tournament output for Streamlit visualization
+        Returns structure compatible with Streamlit code
+        """
+        rondas = []
+        
+        for round_num, matches in enumerate(tournament_schedule, 1):
+            playing = set()
+            for match in matches:
+                playing.update(match["players"])
+            descansan = [p for p in self.players if p not in playing]
+            
+            partidos = []
+            for match in matches:
+                p1, p2, p3, p4 = match["players"]
+                helpers = match["helpers"]
+                
+                # valido_para: all players except helpers
+                valido_para = [p for p in [p1, p2, p3, p4] if p not in helpers]
+                
+                partido = {
+                    "cancha": match["field"] + 1,
+                    "pareja1": [p1, p2],
+                    "pareja2": [p3, p4],
+                    "ayudantes": helpers,
+                    "valido_para": valido_para
+                }
+                partidos.append(partido)
+            
+            ronda_data = {
+                "ronda": round_num,
+                "partidos": partidos,
+                "descansan": descansan
+            }
+            rondas.append(ronda_data)
+        
+        # Create summary DataFrame
+        resumen_data = []
+        for player in self.players:
+            valid_games = self.games_played[player]
+            helper_games_count = self.helper_games[player]
+            total_games = valid_games + helper_games_count
+            
+            resumen_data.append({
+                "jugador": player,
+                "partidos_totales": total_games,
+                "partidos_validos": valid_games,
+                "partidos_ayudante": helper_games_count
+            })
+        
+        resumen_df = pd.DataFrame(resumen_data)
+        
+        output = {
+            "rondas": rondas,
+            "resumen": resumen_df,
+            "stats": {
+                "total_rounds": len(rondas),
+                "players": self.num_players,
+                "fields": self.num_fields,
+                "target_games": stats["target_games"],
+                "games_distribution": stats["games_played"],
+                "helper_distribution": stats["helper_games"]
+            }
+        }
+        
+        return output
 
-        # si no se crearon partidos en la ronda, salir
-        if not partidos_ronda:
-            break
 
-        # actualizar estructura con los partidos de esta ronda
-        rondas.append({
-            "ronda": round_idx,
-            "partidos": partidos_ronda,
-            "descansan": tuple(sorted(descansan))
-        })
-
-        # actualizar contadores y conjuntos (solo al final de la ronda)
-        for partido in partidos_ronda:
-            p1 = partido["pareja1"]
-            p2 = partido["pareja2"]
-            # actualizar parejas contadas (si son validas)
-            for pair in (tuple(sorted(p1)), tuple(sorted(p2))):
-                parejas_contadas[pair] += 1
-            # actualizar enfrentamientos adversarios y partidos_jugados según valido_para
-            for a in p1:
-                for b in p2:
-                    pair = tuple(sorted((a, b)))
-                    # si al menos uno de los dos tiene valido=True en este partido, contar el enfrentamiento
-                    if partido["valido_para"].get(a, False) or partido["valido_para"].get(b, False):
-                        enfrentamientos_cubiertos.add(pair)
-            for pl, valido in partido["valido_para"].items():
-                if valido:
-                    partidos_jugados[pl] += 1
-
-        # setear last_rest para la próxima ronda para intentar evitar descansos consecutivos
-        last_rest = tuple(sorted(descansan)) if descansan else None
-
-        # comprobación temprana de cobertura objetivo
-        coverage = len(enfrentamientos_cubiertos) / len(TODOS_PARES)
-        if coverage >= TARGET_COVERAGE:
-            # si alcanzamos target, podemos seguir un par de rondas más para mejorar parejas
-            # pero como queremos mantener MAX_ROUNDS = 9, solo se cortará si hemos alcanzado target y
-            # ya generamos la cantidad mínima de rondas (aquí permitimos seguir hasta MAX_ROUNDS)
-            pass
-
-        # continuar hasta MAX_ROUNDS
-        # loop sigue
-
-    # después de construir las rondas, calculamos métricas y devolvemos en la estructura original
-    meta_alcanzada = (len(enfrentamientos_cubiertos) == len(TODOS_PARES))
-    resumen_df = pd.DataFrame({
-        "jugador": jugadores,
-        "partidos_jugados": [partidos_jugados[j] for j in jugadores],
-        "descansos": [descansos[j] for j in jugadores]
-    }).sort_values(by=["partidos_jugados", "descansos"], ascending=[False, True]).reset_index(drop=True)
-
-    return {
-        "rondas": rondas,
-        "enfrentamientos_cubiertos": enfrentamientos_cubiertos,
-        "todos_pares": TODOS_PARES,
-        "meta_alcanzada": meta_alcanzada,
-        "partidos_jugados": dict(partidos_jugados),
-        "descansos": dict(descansos),
-        "resumen": resumen_df
-    }
+def generar_torneo_todos_contra_todos(jugadores: List[str], num_canchas: int, 
+                                      seed: int = None) -> Dict[str, Any]:
+    """
+    Main function to generate tournament compatible with Streamlit app
+    
+    Args:
+        jugadores: List of player names
+        num_canchas: Number of fields/courts available
+        seed: Random seed (optional, for reproducibility)
+    
+    Returns:
+        Dictionary with 'rondas', 'resumen', and 'stats'
+    """
+    if seed:
+        random.seed(seed)
+    
+    tournament = AmericanoTournament(jugadores, num_canchas)
+    schedule, stats = tournament.generate_tournament()
+    return tournament.format_for_streamlit(schedule, stats)

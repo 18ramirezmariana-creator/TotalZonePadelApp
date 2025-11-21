@@ -92,26 +92,44 @@ def load_page(page_name):
         st.markdown('<div class="main-title">🏆 PlayZone Padel App</div>', unsafe_allow_html=True)
 
         c1,c2 = st.columns(2)
+        mixto = False
         with c1:
             num_fields = st.number_input("Número de canchas",value = 2,key="fields_input",min_value=1)
             st.session_state.num_fields = num_fields
             mod = st.selectbox("Modalidad", ["Todos Contra Todos","Parejas Fijas"],key="modalidad_input",index=1)
             st.session_state.mod = mod
             if mod == "Todos Contra Todos":
-                mixto = st.selectbox("Composición Parejas", ["Aleatorio","Siempre Mixto"],key="mixto_input",index=0)
-                st.session_state.mixto_op = mixto
-                allow_step = 1
-            elif mod == "Parejas Fijas":
-                allow_step = 2
+                composition = st.selectbox("Composición Parejas", ["Aleatorio","Siempre Mixto"],key="mixto_input",index=0)
+                st.session_state.mixto_op = composition
+                if st.session_state.mixto_op == "Siempre Mixto":
+                    mixto = True
+                else:
+                    mixto = False
+            #elif mod == "Parejas Fijas":
         with c2:
-            num_players = st.number_input("Número de jugadores",value=8,key="select_players",step=allow_step,min_value=4)
+            num_players = st.number_input("Número de jugadores",
+                                          key="select_players",step=1,min_value=8)
             st.session_state.num_players = num_players
+            if ((st.session_state.mod == "Parejas Fijas") or (st.session_state.mixto_op == "Siempre Mixto")) and st.session_state.num_players % 2 != 0:
+                st.warning("En esta modalidad el número de jugadores debe ser PAR.")
+                can_continue = False
+            else:
+                can_continue = True
             pts = st.selectbox("Formato Puntaje", ["Sets","Puntos"],key="scoring",index=1)
             if pts == "Puntos":
                 num_pts = st.number_input("Número de puntos",value=16,key="num_point_input")
                 st.session_state.num_pts = num_pts
                 win = st.selectbox("Puntos Jugados", ["Suma","Fijo"],key="end_format_input",index=0)
                 st.session_state.win = win
+        if st.button("Continuar a Registro de Jugadores",key="button0",use_container_width=True):
+            if can_continue:
+                if mixto:
+                    st.session_state.page = "players_setupMixto"
+                    st.rerun()
+                else:
+                    st.session_state.page = "players_setup"
+                    st.rerun()
+            
     
         
     else:
@@ -119,13 +137,6 @@ def load_page(page_name):
         module.app()
 current_page = st.session_state.page
 load_page(current_page)
-# Obtener el índice de la página actual
-current_index = pages_list.index(current_page)
-
-if current_page == "home":
-    if st.button("Continuar a Registro de Jugadores",key="button0",use_container_width=True):
-        st.session_state.page = pages_list[1]  # Avanzar a la siguiente página
-        st.rerun()
 
 sidebar_style()
 

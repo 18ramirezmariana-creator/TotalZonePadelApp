@@ -1,11 +1,11 @@
 import streamlit as st
-from assets.helper_funcs import generar_fixture_parejas, calcular_ranking_parejas,initialize_vars, calcular_ranking_individual
-from models.AllvsAll_Random_modelv4 import generar_torneo_todos_contra_todos
+from assets.helper_funcs import generar_fixture_parejas, calcular_ranking_parejas,initialize_vars, calcular_ranking_individual,render_nombre
 from assets.analyze_funcs import analyze_algorithm_results
+from models.AllvsAll_Random_modelv3 import AmericanoTournament
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import itertools
+import itertools,random
 import numpy as np
 
 def app():
@@ -26,6 +26,13 @@ def app():
             st.session_state.parejas = parejas
 
     elif mod_parejas == "Todos Contra Todos":
+        def generar_torneo_todos_contra_todos(jugadores, num_canchas, seed=None):
+            if seed:
+                random.seed(seed)
+            
+            tournament = AmericanoTournament(st.session_state.players, num_canchas)
+            schedule, helpers = tournament.generate_tournament()
+            return tournament.format_for_streamlit(schedule, helpers)
         st.title("Torneo Americano - Todos contra Todos - Suma")
         if st.button("Generar Fixture"):
             out = generar_torneo_todos_contra_todos(st.session_state.players, num_canchas, seed=42)
@@ -91,23 +98,27 @@ def app():
         """, unsafe_allow_html=True)
 
         for ronda_data in st.session_state.fixture:
-            with st.expander(f"DEBUG Ronda {ronda_data['ronda']}"):
-                st.write("Partidos:")
-                st.write(ronda_data["partidos"])
-                st.write("Descansan crudo:", ronda_data["descansan"])
-                st.write("Descansan únicos:", list(set(ronda_data["descansan"])))
-
             st.subheader(f"Ronda {ronda_data['ronda']}")
             cols = st.columns(len(ronda_data["partidos"]))
 
             for c_i, partido in enumerate(ronda_data["partidos"]):
-                pareja1 = " & ".join(partido["pareja1"])
-                pareja2 = " & ".join(partido["pareja2"])
-                ayudantes = partido.get("ayudantes", [])
+                with st.expander(f"Debug Partido"):
+                    st.write("Ayudantes declarados:", partido["ayudantes"])
+                    st.write("Valido_para:", partido["valido_para"])
+
+                ayudantes = partido.get("ayudantes", []) or []
+                # aplicar ícono a los nombres que son ayudantes
+                p1_render = [render_nombre(j, ayudantes) for j in partido["pareja1"]]
+                p2_render = [render_nombre(j, ayudantes) for j in partido["pareja2"]]
+
+                pareja1 = " & ".join(p1_render)
+                pareja2 = " & ".join(p2_render)
                 if ayudantes:
-                    ayud_text = f"<div style='font-size:14px;color:#6C13BF;margin-top:5px;'>Ayudantes: {', '.join(ayudantes)}</div>"
+                    lista_ayudantes = ", ".join([render_nombre(a, ayudantes) for a in ayudantes])
+                    ayud_text = f"<div style='font-size:14px;color:#6C13BF;margin-top:5px;'>Ayudantes: {lista_ayudantes}</div>"
                 else:
                     ayud_text = ""
+
                 cancha = partido["cancha"]
 
                 with cols[c_i]:
@@ -121,17 +132,29 @@ def app():
                         </div>
                     """, unsafe_allow_html=True)
 
+                    # --- keys seguras basadas en nombres reales ---
+                    raw_p1 = "_".join(partido["pareja1"])
+                    raw_p2 = "_".join(partido["pareja2"])
+
+                    key_p1 = f"score_r{ronda_data['ronda']}_m{c_i}_{raw_p1}_p1"
+                    key_p2 = f"score_r{ronda_data['ronda']}_m{c_i}_{raw_p2}_p2"
+
                     colA, colB = st.columns(2)
                     with colA:
-                        score1 = st.number_input(f"Puntos {pareja1}", key=f"{pareja1}_{pareja2}_p1", min_value=0)
+                        score1 = st.number_input(f"Puntos {pareja1}", key=key_p1, min_value=0)
                     with colB:
-                        score2 = st.number_input(f"Puntos {pareja2}", key=f"{pareja1}_{pareja2}_p2", min_value=0)
-
-                    st.session_state.resultados[(pareja1, pareja2)] = (score1, score2)
+                        score2 = st.number_input(f"Puntos {pareja2}", key=key_p2, min_value=0)
+                    
+                    # *** AGREGAR AQUÍ: Guardar en resultados ***
+                    pareja1_str = " & ".join(partido["pareja1"])
+                    pareja2_str = " & ".join(partido["pareja2"])
+                    st.session_state.resultados[(pareja1_str, pareja2_str)] = (score1, score2)
 
                 # mostrar ayudantes o descansos
                 if ayudantes:
-                    st.caption(f"Ayudantes: {', '.join(ayudantes)}")
+                    lista_ayudantes = ", ".join([render_nombre(a, ayudantes) for a in ayudantes])
+                    st.caption(f"Ayudantes: {lista_ayudantes}")
+
             if ronda_data["descansan"]:
                 st.info(f"Descansan: {', '.join(ronda_data['descansan'])}")
                     # Mostrar resumen de partidos jugados y descansos
@@ -144,9 +167,9 @@ def app():
         
         # --- Ranking Final ---
         if "ranking" not in st.session_state:
-            ranking = calcular_ranking_individual(st.session_state.resultados)
+            ranking = calcular_ranking_individual(st.session_state.resultados, st.session_state.fixture)
         if st.button("¿Cómo va el ranking? 👀"):
-            ranking = calcular_ranking_individual(st.session_state.resultados)
+            ranking = calcular_ranking_individual(st.session_state.resultados, st.session_state.fixture)
             st.session_state.ranking = ranking
             st.dataframe(ranking)
             
@@ -230,7 +253,7 @@ def app():
                     with colB:
                         score2 = st.number_input(f"Puntos {p2}", key=f"{p1}_{p2}_p2", min_value=0)
 
-                    st.session_state.resultados[(p1, p2)] = (score1, score2)
+                    st.session_state.resultados[(raw_p1, raw_p2)] = (score1, score2)
             
         # --- Ranking Final ---            
         if st.button("¿Cómo va el ranking? 👀"):
@@ -249,7 +272,7 @@ def app():
             if mod_parejas == "Parejas Fijas":
                 ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
             elif mod_parejas == "Todos Contra Todos":
-                ranking = calcular_ranking_individual(st.session_state.resultados)
+                ranking = calcular_ranking_individual(st.session_state.resultados,st.session_state.fixture)
             st.session_state.ranking = ranking
             st.session_state.page = "z_ranking"
             st.rerun()

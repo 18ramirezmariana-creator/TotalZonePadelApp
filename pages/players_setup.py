@@ -121,4 +121,3 @@ def app():
             st.session_state.page = "torneo"
             st.rerun()
 
-#TODO regla para que no se repitan nombres 
