@@ -31,24 +31,66 @@ def load_page(page_name):
             margin-bottom: 50px;
         }
 
-        /* === INPUTS NUMÉRICOS MÁS GRANDES === */
+        /* === ALTURA UNIFORME PARA TODOS LOS INPUTS === */
+
+        /* Number Input Container - Forzar altura total */
+        .stNumberInput {
+            margin-bottom: 25px !important;
+        }
+
+        .stNumberInput > div {
+            height: 52px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        /* Number Input - Campo de texto */
         .stNumberInput input {
+            height: 52px !important;
             min-height: 52px !important;
-            width: 100% !important;          /* ocupa todo el ancho posible */
+            max-height: 52px !important;
+            width: 100% !important;
             padding: 0 18px !important;
             font-size: 20px !important;
             border-radius: 10px !important;
             background-color: #f7f7fb !important;
             line-height: 52px !important;
+            box-sizing: border-box !important;
         }
-                    
+
+        /* Number Input - Botones +/- */
         .stNumberInput button {
-        color: white !important;           /* color de los signos + y - */
+            height: 52px !important;
+            min-height: 52px !important;
+            max-height: 52px !important;
+            color: #6C13BF !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        /* Contenedor de los botones */
+        .stNumberInput > div > div {
+            height: 52px !important;
+            display: flex !important;
+            align-items: stretch !important;
         }
 
         /* === SELECTBOX IGUALADOS === */
-        div[data-baseweb="select"] > div {
+        .stSelectbox {
+            margin-bottom: 25px !important;
+        }
+
+        div[data-baseweb="select"] {
+            height: 52px !important;
             min-height: 52px !important;
+            max-height: 52px !important;
+        }
+
+        div[data-baseweb="select"] > div {
+            height: 52px !important;
+            min-height: 52px !important;
+            max-height: 52px !important;
             padding: 0 18px !important;
             font-size: 20px !important;
             border-radius: 10px !important;
@@ -56,19 +98,42 @@ def load_page(page_name):
             display: flex !important;
             align-items: center !important;
             width: 100% !important;
+            box-sizing: border-box !important;
         }
 
         /* === LABELS MÁS GRANDES Y EN NEGRILLA === */
         label, .stSelectbox label, .stNumberInput label {
-            font-size: 32px !important;      /* más grandes */
-            font-weight: 700 !important;     /* negrilla */
-            color: #0B0B19 !important;       /* color oscuro */
+            font-size: 24px !important;
+            font-weight: 700 !important;
+            color: #0B0B19 !important;
             margin-bottom: 6px !important;
         }
+        
+        /* Forzar negrilla en todos los labels */
+        div[data-testid="stNumberInput"] label,
+        div[data-testid="stSelectbox"] label {
+            font-weight: 700 !important;
+        }
 
-        /* === ESPACIADO ENTRE CAMPOS === */
-        .stSelectbox, .stNumberInput {
-            margin-bottom: 25px !important;
+        /* === RESUMEN DEL TORNEO === */
+        .tournament-summary {
+            background-color: #f0e6ff;
+            border-left: 4px solid #6C13BF;
+            border-radius: 8px;
+            padding: 20px 25px;
+            margin: 35px 0 25px 0;
+        }
+
+        .summary-text {
+            color: #0B0B19;
+            font-size: 18px;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .summary-text strong {
+            color: #6C13BF;
+            font-weight: 700;
         }
 
         /* === BOTÓN === */
@@ -80,13 +145,13 @@ def load_page(page_name):
             font-size: 18px;
             padding: 1em;
             border-radius: 10px;
-            margin-top: 40px;
+            margin-top: 20px;
         }
-                    
+
         div[data-testid="column"] { padding: 0 30px !important; } 
-        section.main > div { padding-top: 30px; }            
+        section.main > div { padding-top: 30px; }
         </style>
-        """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
         # Título centrado
         st.markdown('<div class="main-title">🏆 PlayZone Padel App</div>', unsafe_allow_html=True)
@@ -124,8 +189,29 @@ def load_page(page_name):
             if pts == "Puntos":
                 num_pts = st.number_input("Número de puntos",value=16,key="num_point_input")
                 st.session_state.num_pts = num_pts
-                win = st.selectbox("Puntos Jugados", ["Suma","Fijo"],key="end_format_input",index=0)
-                st.session_state.win = win
+
+        # === RESUMEN DEL TORNEO ===
+        # Construir el texto del resumen
+        summary_text = f"Torneo <strong>{st.session_state.mod}</strong> con <strong>{st.session_state.num_players} jugadores</strong> en <strong>{st.session_state.num_fields} {'cancha' if st.session_state.num_fields == 1 else 'canchas'}</strong>"
+        
+        # Agregar información de composición solo si es Siempre Mixto
+        if st.session_state.mod == "Todos Contra Todos" and st.session_state.mixto_op == "Siempre Mixto":
+            summary_text += f", parejas <strong>siempre mixtas</strong>"
+        
+        # Agregar información de puntaje
+        if pts == "Puntos":
+            summary_text += f". Partidos a <strong>{st.session_state.num_pts} puntos</strong>."
+        elif pts == "Sets":
+            summary_text += f". Partidos a <strong>{st.session_state.num_sets} sets</strong>."
+        
+        summary_html = f"""
+        <div class="tournament-summary">
+            <p class="summary-text">📋 {summary_text}</p>
+        </div>
+        """
+        
+        st.markdown(summary_html, unsafe_allow_html=True)
+
         if st.button("Continuar a Registro de Jugadores",key="button0",use_container_width=True):
             if can_continue:
                 if mixto:
@@ -144,7 +230,3 @@ current_page = st.session_state.page
 load_page(current_page)
 
 sidebar_style()
-
-#TODO arreglar ancho de boton en version desplegada
-#TODO poner labels en negrilla 
-#incluir resumen de modalidad

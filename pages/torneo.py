@@ -13,17 +13,30 @@ def app():
     puntos_partido =st.session_state.num_pts
     to_init = {"code_play": "", "ranking":""}
     initialize_vars(to_init)
+
+    # Función Callback para actualizar inmediatamente
+    def actualizar_resultado(p1_str, p2_str, k1, k2):
+        # Leemos el valor actual de los inputs usando sus keys
+        val1 = st.session_state[k1]
+        val2 = st.session_state[k2]
+        # Guardamos inmediatamente en el diccionario de resultados
+        st.session_state.resultados[(p1_str, p2_str)] = (val1, val2)
     
     #divission logica parejas fijas vs aleatorias
     mod_parejas = st.session_state.mod
     if mod_parejas == "Parejas Fijas":
-        st.title("Torneo Americano - Parejas Fijas - Suma")
+        st.markdown('<div class="main-title"> Torneo Americano - Parejas Fijas </div>', unsafe_allow_html=True)
         parejas = st.session_state.players
-        if st.button("Generar Fixture"):
-            st.session_state.fixture = generar_fixture_parejas(parejas, num_canchas)
-            st.session_state.code_play = "parejas_fijas"
-            st.session_state.resultados = {}
-            st.session_state.parejas = parejas
+        
+        # AUTO-GENERATE fixture on first load
+        tournament_key = f"parejas_fijas_{len(parejas)}_{num_canchas}_{puntos_partido}"
+        if 'tournament_key' not in st.session_state or st.session_state.tournament_key != tournament_key:
+            with st.spinner("Generando fixture..."):
+                st.session_state.fixture = generar_fixture_parejas(parejas, num_canchas)
+                st.session_state.code_play = "parejas_fijas"
+                st.session_state.resultados = {}
+                st.session_state.parejas = parejas
+                st.session_state.tournament_key = tournament_key
 
     elif mod_parejas == "Todos Contra Todos":
         def generar_torneo_todos_contra_todos(jugadores, num_canchas, seed=None):
@@ -33,18 +46,34 @@ def app():
             tournament = AmericanoTournament(st.session_state.players, num_canchas)
             schedule, helpers = tournament.generate_tournament()
             return tournament.format_for_streamlit(schedule, helpers)
-        st.title("Torneo Americano - Todos contra Todos - Suma")
-        if st.button("Generar Fixture"):
-            out = generar_torneo_todos_contra_todos(st.session_state.players, num_canchas, seed=42)
-            st.session_state.code_play = "AllvsAll"
-            st.session_state.fixture = out["rondas"]
-            st.session_state.out = out
-            st.session_state.resultados = {}
+        
+        st.markdown('<div class="main-title"> Torneo Americano</div>', unsafe_allow_html=True)
+
+        
+        # AUTO-GENERATE fixture on first load (igual que en sets)
+        jugadores = st.session_state.players
+        tournament_key = f"todos_contra_todos_{len(jugadores)}_{num_canchas}_{puntos_partido}"
+        
+        if 'tournament_key' not in st.session_state or st.session_state.tournament_key != tournament_key:
+            with st.spinner("Generando fixture optimizado..."):
+                out = generar_torneo_todos_contra_todos(jugadores, num_canchas, seed=42)
+                st.session_state.code_play = "AllvsAll"
+                st.session_state.fixture = out["rondas"]
+                st.session_state.out = out
+                st.session_state.resultados = {}
+                st.session_state.tournament_key = tournament_key
 
     # Visualización especial para Todos Contra Todos
     if st.session_state.code_play == "AllvsAll":
         st.markdown("""
             <style>
+            .main-title {
+            text-align: center;
+            font-size: 32px;
+            color: #6C13BF; /* Morado/Púrpura */
+            font-weight: 700;
+            margin-bottom: 40px;
+            }
             .match-card {
                 background: linear-gradient(145deg, #ffffff, #f0f0f5); /* leve degradado para volumen */
                 border-radius: 18px;
@@ -102,10 +131,6 @@ def app():
             cols = st.columns(len(ronda_data["partidos"]))
 
             for c_i, partido in enumerate(ronda_data["partidos"]):
-                """ with st.expander(f"Debug Partido"):
-                    st.write("Ayudantes declarados:", partido["ayudantes"])
-                    st.write("Valido_para:", partido["valido_para"])"""
-
                 ayudantes = partido.get("ayudantes", []) or []
                 # aplicar ícono a los nombres que son ayudantes
                 p1_render = [render_nombre(j, ayudantes) for j in partido["pareja1"]]
@@ -139,52 +164,60 @@ def app():
                     key_p1 = f"score_r{ronda_data['ronda']}_m{c_i}_{raw_p1}_p1"
                     key_p2 = f"score_r{ronda_data['ronda']}_m{c_i}_{raw_p2}_p2"
 
-                    colA, colB = st.columns(2)
-                    with colA:
-                        score1 = st.number_input(f"Puntos {pareja1}", key=key_p1, min_value=0)
-                    with colB:
-                        score2 = st.number_input(f"Puntos {pareja2}", key=key_p2, min_value=0)
-                    
-                    # *** AGREGAR AQUÍ: Guardar en resultados ***
+                    # --- CAMBIO: Recuperar valores guardados si existen ---
                     pareja1_str = " & ".join(partido["pareja1"])
                     pareja2_str = " & ".join(partido["pareja2"])
-                    current_value = (score1, score2)
+                    # Buscamos si ya hay un resultado guardado para este partido
+                    saved_s1, saved_s2 = st.session_state.resultados.get((pareja1_str, pareja2_str), (0, 0))
 
-                    # Solo actualizar si no existe o cambió
-                    if (pareja1_str, pareja2_str) not in st.session_state.resultados or \
-                    st.session_state.resultados[(pareja1_str, pareja2_str)] != current_value:
-                        st.session_state.resultados[(pareja1_str, pareja2_str)] = current_value
-                # mostrar ayudantes o descansos
-                if ayudantes:
-                    lista_ayudantes = ", ".join([render_nombre(a, ayudantes) for a in ayudantes])
-                    st.caption(f"Ayudantes: {lista_ayudantes}")
+                    colA, colB = st.columns(2)
+                    with colA:
+                        st.number_input(
+                            f"Puntos {pareja1}", 
+                            key=key_p1, 
+                            min_value=0,
+                            max_value=puntos_partido, 
+                            value=saved_s1,
+                            on_change=actualizar_resultado,
+                            kwargs={"p1_str": pareja1_str, "p2_str": pareja2_str, "k1": key_p1, "k2": key_p2}
+                        )
+                    with colB:
+                        st.number_input(
+                            f"Puntos {pareja2}", 
+                            key=key_p2, 
+                            min_value=0,
+                            max_value=puntos_partido, 
+                            value=saved_s2,
+                            on_change=actualizar_resultado,
+                            kwargs={"p1_str": pareja1_str, "p2_str": pareja2_str, "k1": key_p1, "k2": key_p2}
+                        )
 
             if ronda_data["descansan"]:
                 st.info(f"Descansan: {', '.join(ronda_data['descansan'])}")
-                    # Mostrar resumen de partidos jugados y descansos
+                    
+        # Mostrar resumen de partidos jugados y descansos
         if "out" in st.session_state and "resumen" in st.session_state.out:
             st.markdown("### Resumen de participación")
             st.dataframe(st.session_state.out["resumen"])
-        # --- Sección de análisis del algoritmo ---
-        """st.markdown("## 🔍 Análisis de Resultados del Algoritmo")
-        analyze_algorithm_results(st.session_state.fixture)"""
         
         # --- Ranking Final ---
-        if "ranking" not in st.session_state:
-            ranking = calcular_ranking_individual(st.session_state.resultados, st.session_state.fixture)
         if st.button("¿Cómo va el ranking? 👀"):
             ranking = calcular_ranking_individual(st.session_state.resultados, st.session_state.fixture)
             st.session_state.ranking = ranking
             st.dataframe(ranking)
             
-            
-    st.write(f"se jugara un torneo americano - {mod_parejas} - en {num_canchas} canchas a la suma de {puntos_partido} puntos")
 
-    
 
     if st.session_state.code_play == "parejas_fijas" :
         st.markdown("""
             <style>
+            .main-title {
+            text-align: center;
+            font-size: 32px;
+            color: #6C13BF; /* Morado/Púrpura */
+            font-weight: 700;
+            margin-bottom: 40px;
+            }
             .match-card {
                 background-color: #f7f7fb;
                 border-radius: 15px;
@@ -251,17 +284,36 @@ def app():
                         </div>
                     """, unsafe_allow_html=True)
 
+                    # Keys para los widgets
+                    k1 = f"{p1}_{p2}_p1"
+                    k2 = f"{p1}_{p2}_p2"
+
+                    saved_s1, saved_s2 = st.session_state.resultados.get((p1, p2), (0, 0))
+
                     colA, colB = st.columns(2)
                     with colA:
-                        score1 = st.number_input(f"Puntos {p1}", key=f"{p1}_{p2}_p1", min_value=0)
+                        st.number_input(
+                            f"Puntos {p1}", 
+                            key=k1, 
+                            min_value=0,
+                            max_value=puntos_partido, 
+                            value=saved_s1,
+                            on_change=actualizar_resultado,
+                            kwargs={"p1_str": p1, "p2_str": p2, "k1": k1, "k2": k2}
+                        )
                     with colB:
-                        score2 = st.number_input(f"Puntos {p2}", key=f"{p1}_{p2}_p2", min_value=0)
-
-                    st.session_state.resultados[(p1, p2)] = (score1, score2)
+                        st.number_input(
+                            f"Puntos {p2}", 
+                            key=k2, 
+                            min_value=0,
+                            max_value=puntos_partido, 
+                            value=saved_s2,
+                            on_change=actualizar_resultado,
+                            kwargs={"p1_str": p1, "p2_str": p2, "k1": k1, "k2": k2})
 
             
         # --- Ranking Final ---            
-        if st.button("¿Cómo va el ranking? 👀"):
+        if st.button("¿Cómo va el ranking? 👀", key="ranking_parejas"):
             ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
             st.session_state.ranking = ranking
             st.dataframe(ranking)
@@ -269,11 +321,18 @@ def app():
     # --- Navegación inferior ---
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        if st.button("Volver", key="back_button"):
+        if st.button("Volver y Reiniciar", key="back_button"):
+            # Limpiar datos del torneo al volver
+            if 'tournament_key' in st.session_state:
+                del st.session_state.tournament_key
+            if 'fixture' in st.session_state:
+                del st.session_state.fixture
+            if 'resultados' in st.session_state:
+                del st.session_state.resultados
             st.session_state.page = "players_setup"
             st.rerun()
     with col4:
-        if st.button("Ver Resultados Finales"):
+        if st.button("Ver Resultados Finales 🏆"):
             if mod_parejas == "Parejas Fijas":
                 ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
             elif mod_parejas == "Todos Contra Todos":
@@ -281,6 +340,3 @@ def app():
             st.session_state.ranking = ranking
             st.session_state.page = "z_ranking"
             st.rerun()
-   
-#TODO seguimiento ranking 
-# verificacion puntaje = suma
