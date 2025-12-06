@@ -1,5 +1,5 @@
 import streamlit as st
-from models.AmericanoMixto.AllvsAll_MixtoV2 import AmericanoPadelTournament, generar_torneo_mixto
+from models.AmericanoMixto.AllvsAll_MixtoV2 import AmericanoPadelTournament, generar_torneo_mixto,analyze_algorithm_results
 from assets.helper_funcs import initialize_vars, calcular_ranking_individual, render_nombre
 from assets.analyze_funcs import heatmap_parejas_mixtas,heatmap_descansos_por_ronda, heatmap_enfrentamientos
 from collections import defaultdict
@@ -174,6 +174,9 @@ def app():
         st.markdown("### 📊 Resumen de Participación")
         df_resumen = pd.DataFrame(st.session_state.out["resumen"])
         st.dataframe(df_resumen, use_container_width=True)
+    
+    analyze_algorithm_results(st.session_state.fixture,male_players, 
+        female_players)
     
     # Ranking buttons
     st.markdown("---")
