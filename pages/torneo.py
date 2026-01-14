@@ -1,8 +1,8 @@
 import streamlit as st
 from assets.helper_funcs import  calcular_ranking_parejas,initialize_vars, calcular_ranking_individual,render_nombre
 from models.AmericanoParejas.AmericanoParejasv1 import FixedPairsTournament
-from assets.analyze_funcs import analyze_algorithm_results
-from models.AllvsAll_Random_modelv3 import AmericanoTournament
+from assets.analyze_funcs import build_matrices, plot_heatmap, analyze_descansos
+from models.AllvsAll_Random_modelv4 import CompleteAmericanoTournament
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -185,10 +185,10 @@ def app():
         def generar_torneo_todos_contra_todos(jugadores, num_canchas, seed=None):
             if seed:
                 random.seed(seed)
-            
-            tournament = AmericanoTournament(st.session_state.players, num_canchas)
-            schedule, helpers = tournament.generate_tournament()
-            return tournament.format_for_streamlit(schedule, helpers)
+            # stats es helpers en v3
+            tournament = CompleteAmericanoTournament(st.session_state.players, num_canchas)
+            schedule, stats = tournament.generate_tournament()
+            return tournament.format_for_streamlit(schedule, stats)
         
         st.markdown('<div class="main-title"> Torneo Americano</div>', unsafe_allow_html=True)
 
@@ -343,6 +343,31 @@ def app():
             if "out" in st.session_state and "resumen" in st.session_state.out:
                 st.markdown("### Resumen de participación")
                 st.dataframe(st.session_state.out["resumen"])
+            
+            #with st.expander("📊 Ver Análisis de Calidad (Parejas y Oponentes)"):
+            #    st.info("Este análisis permite verificar que todos jueguen con todos y contra todos.")
+            #   # Obtenemos los datos necesarios
+            #    fixture_actual = st.session_state.fixture
+            #    todos_jugadores = st.session_state.players
+                
+                # Ejecutamos las visualizaciones
+            #    col_a, col_b = st.columns(2)
+                
+                # 1. Matrices de Calor (Parejas y Enfrentamientos)
+            #    m_parejas, m_enfrentamientos = build_matrices(fixture_actual, todos_jugadores)
+                
+            #    with col_a:
+            #        st.write("**¿Con quién jugaste? (Parejas)**")
+            #        plot_heatmap(m_parejas, "Distribución de Parejas", "PuBuGn", "Veces juntos")
+                
+            #    with col_b:
+            #        st.write("**¿Contra quién jugaste? (Rivales)**")
+            #        plot_heatmap(m_enfrentamientos, "Distribución de Oponentes", "OrRd", "Veces en contra")
+                
+                # 2. Análisis de descansos
+            #    st.write("---")
+            #    st.write("**Análisis de Descansos**")
+            #    analyze_descansos(fixture_actual, todos_jugadores)
             
             # --- Ranking Final ---
             if st.button("¿Cómo va el ranking? 👀",use_container_width=True):

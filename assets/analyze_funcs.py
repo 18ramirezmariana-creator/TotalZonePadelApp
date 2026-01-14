@@ -12,23 +12,23 @@ def get_unique_players(fixture):
 
 
 def build_matrices(fixture, players):
-    """Construye matrices de parejas y enfrentamientos."""
     matrix_parejas = pd.DataFrame(0, index=players, columns=players)
     matrix_enfrentamientos = pd.DataFrame(0, index=players, columns=players)
 
     for ronda in fixture:
         for partido in ronda["partidos"]:
-            p1, p2 = partido["pareja1"], partido["pareja2"]
+            # IMPORTANTE: Asegúrate de que extraes las listas de jugadores
+            p1 = partido["pareja1"] # ['Jugador 1', 'Jugador 2']
+            p2 = partido["pareja2"] # ['Jugador 3', 'Jugador 4']
 
-            # compañeros
-            for a, b in itertools.combinations(p1, 2):
-                matrix_parejas.loc[a, b] += 1
-                matrix_parejas.loc[b, a] += 1
-            for a, b in itertools.combinations(p2, 2):
-                matrix_parejas.loc[a, b] += 1
-                matrix_parejas.loc[b, a] += 1
+            # Compañeros (P1)
+            matrix_parejas.loc[p1[0], p1[1]] += 1
+            matrix_parejas.loc[p1[1], p1[0]] += 1
+            # Compañeros (P2)
+            matrix_parejas.loc[p2[0], p2[1]] += 1
+            matrix_parejas.loc[p2[1], p2[0]] += 1
 
-            # enfrentamientos
+            # Enfrentamientos
             for a in p1:
                 for b in p2:
                     matrix_enfrentamientos.loc[a, b] += 1
