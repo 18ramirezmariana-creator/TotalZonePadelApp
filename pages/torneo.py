@@ -338,6 +338,18 @@ def app():
 
                 if ronda_data["descansan"]:
                     st.info(f"Descansan: {', '.join(ronda_data['descansan'])}")
+            
+            has_helpers = any(
+                any(partido.get("ayudantes", []) for partido in ronda["partidos"])
+                for ronda in st.session_state.fixture
+            )
+            
+            if has_helpers:
+                st.info(
+                    f"🛟 **Ayudantes:** Algunos jugadores ya completaron sus {st.session_state.out['stats']['minimum_games']} "
+                    "partidos mínimos y juegan como 'ayudantes' (marcados con 🛟). "
+                    "El resultado de estos partidos NO cuenta para sus estadísticas, pero SÍ cuenta para los demás jugadores."
+                )
                         
             # Mostrar resumen de partidos jugados y descansos
             if "out" in st.session_state and "resumen" in st.session_state.out:
