@@ -14,7 +14,7 @@ def sidebar_style():
         </style>
     """
 
-    logo = Image.open("assets/logo_demo.jpg")
+    logo = Image.open("assets/logoTotalZone.png")
     watermark = Image.open("assets/watermark_padel_lab.png")
     st.markdown(sidebar_bg, unsafe_allow_html=True)
     with st.sidebar:

@@ -13,8 +13,8 @@ hide_streamlit_style = """
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-if not check_login():
-    st.stop()
+#if not check_login():
+#    st.stop()
 
 # Cargar la lista de páginas desde la carpeta "pages"
 pages_list = ["home"] + [f.replace(".py", "") for f in os.listdir("pages") if f.endswith(".py")]
@@ -167,7 +167,7 @@ def load_page(page_name):
     """, unsafe_allow_html=True)
 
         # Título centrado
-        st.markdown('<div class="main-title">🏆 Padel App</div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-title">🏆 Total Zone Padel App</div>', unsafe_allow_html=True)
 
         c1,c2 = st.columns(2)
         mixto = False
