@@ -270,7 +270,7 @@ def app():
                 st.session_state.ranking = ranking
                 display_ranking_table(ranking,config=CLUB_THEME,ranking_type="individual")
             
-
+    st.markdown("<br>", unsafe_allow_html=True) # Espacio sutil
     # --- Navegación inferior ---
     col1, col2 = st.columns(2)
     with col1:
