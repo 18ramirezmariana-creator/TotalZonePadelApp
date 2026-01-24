@@ -754,6 +754,13 @@ def apply_custom_css_torneo(config=None):
         div[data-testid="column"] .stButton button {{
             width: 100%;
         }}
+
+        /* Forzar que las columnas de navegación ocupen el 50% real sin huecos */
+        div[data-testid="column"] {{
+            flex: 1 1 50% !important;
+            width: 50% !important;
+            min-width: 50% !important;
+        }}
         
     </style>
     """
