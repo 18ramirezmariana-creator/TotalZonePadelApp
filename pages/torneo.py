@@ -274,7 +274,7 @@ def app():
     # --- Navegación inferior ---
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Volver y Reiniciar", key="back_button"):
+        if st.button("Volver y Reiniciar", key="back_button",use_container_width=True):
             # Limpiar datos del torneo al volver
             if 'tournament_key' in st.session_state:
                 del st.session_state.tournament_key
@@ -285,7 +285,7 @@ def app():
             st.session_state.page = "players_setup"
             st.rerun()
     with col2:
-        if st.button("Ver Resultados Finales 🏆"):
+        if st.button("Ver Resultados Finales 🏆",use_container_width=True):
             if mod_parejas == "Parejas Fijas":
                 ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
             elif mod_parejas == "Todos Contra Todos":

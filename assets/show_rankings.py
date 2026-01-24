@@ -206,7 +206,7 @@ def define_ranking_items(df_group_ranking, col1, col2, col3):
                                 justify-content:space-between;
                                 align-items:center;">
 
-                <span style="font-weight:600; color:#5E3187; min-width: 100px;">
+                <span style="font-weight:600; color:#002d4e; min-width: 100px;">
                     {rank_position}ᵗʰ — {row[name_column]}
                 </span>
 
@@ -233,7 +233,7 @@ def define_ranking_items(df_group_ranking, col1, col2, col3):
                                 display:flex;
                                 justify-content:space-between;
                                 align-items:center;">
-                    <span style="font-weight:600; color:#5E3187;">{rank_position}ᵗʰ — {row[name_column]}</span>
+                    <span style="font-weight:600; color:#002d4e;">{rank_position}ᵗʰ — {row[name_column]}</span>
                     <span style="font-weight:500; color:#333;">{row['Puntos']} pts</span>
                     </div>
                 """, unsafe_allow_html=True)
